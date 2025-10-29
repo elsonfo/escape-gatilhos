@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Escape Room — Gatilhos Mentais (Ranking em tempo real)</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#111827; --ink:#e5e7eb; --muted:#94a3b8; --brand:#6366f1; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 20% 10%,#1f2937,transparent),radial-gradient(1000px 800px at 80% 0%,#111827,transparent),var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+  .title{font-size:clamp(22px,2.4vw,30px);font-weight:800;letter-spacing:.3px}
+  .hud{display:flex;gap:10px;align-items:center}
+  .chip{background:rgba(99,102,241,.12);color:#c7d2fe;border:1px solid rgba(99,102,241,.35);padding:6px 10px;border-radius:999px;font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+  .col-12{grid-column:span 12}
+  .col-8{grid-column:span 12}
+  .col-4{grid-column:span 12}
+  @media(min-width:980px){.col-8{grid-column:span 8}.col-4{grid-column:span 4}}
+  .panel{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);backdrop-filter: blur(4px);border-radius:16px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+  .room-title{font-size:20px;margin:0 0 6px;font-weight:800}
+  .lock{border:1px dashed rgba(255,255,255,.2);border-radius:12px;padding:12px;margin-top:10px}
+  .choices{display:grid;gap:10px}
+  .choices button{background:#1f2937;border:1px solid rgba(255,255,255,.08);text-align:left;border-radius:10px;padding:10px;color:var(--ink);cursor:pointer}
+  .choices button.correct{outline:2px solid var(--ok)}
+  .choices button.wrong{outline:2px solid var(--bad)}
+  .drag-area{display:flex;gap:10px;flex-wrap:wrap}
+  .pill{user-select:none;padding:8px 12px;border-radius:999px;background:#0b1220;border:1px solid rgba(255,255,255,.15);cursor:grab}
+  .drop{min-height:48px;min-width:120px;border:2px dashed rgba(255,255,255,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;padding:8px}
+  button{appearance:none;background:var(--brand);color:white;border:none;border-radius:12px;padding:12px 16px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.6;filter:grayscale(.4);cursor:not-allowed}
+  .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.15)}
+  .muted{color:var(--muted)}
+  .scorebar{height:10px;background:#0b1220;border-radius:999px;border:1px solid rgba(255,255,255,.08);overflow:hidden}
+  .scorebar>div{height:100%;background:linear-gradient(90deg,var(--ok),#10b981,var(--brand));width:0%}
+  .success{border-color:rgba(34,197,94,.6)!important}
+  .fail{border-color:rgba(239,68,68,.7)!important}
+  .toast{position:fixed;right:18px;bottom:18px;background:#0b1220;border:1px solid rgba(255,255,255,.12);padding:12px 14px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .hidden{display:none!important}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
+  th{color:#c7d2fe}
+  .tag{display:inline-flex;gap:6px;align-items:center;background:#0b1220;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 10px;font-size:13px}
+  input[type=text]{width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b1220;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title">🏁 Escape Room — Gatilhos Mentais</div>
+    <div class="hud">
+      <div class="chip" id="timer">⏱ 15:00</div>
+      <div class="chip">🔒 <span id="locks-left">3</span> travas</div>
+      <div class="chip">⭐ <span id="points">0</span> pontos</div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="col-8">
+      <section class="panel" id="intro">
+        <h2 style="margin-top:0">Bem-vindo(a)! Preencha e comece</h2>
+        <div class="grid">
+          <div class="col-12">
+            <label>Nome do jogador/grupo</label>
+            <input id="player-name" type="text" placeholder="ex.: Grupo Alfa" />
+          </div>
+          <div class="col-12">
+            <label>Turma (opcional)</label>
+            <input id="player-class" type="text" placeholder="ex.: ADM3N" />
+          </div>
+        </div>
+        <p class="muted" style="margin-top:8px">Objetivo: abrir 3 travas antes do tempo acabar. Erros tiram pontos e tempo. Use pistas (reduzem pontos).</p>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button id="start" disabled>Começar agora</button>
+        </div>
+      </section>
+
+      <section class="grid hidden" id="rooms">
+        <!-- ROOM 1 -->
+        <div class="col-12 panel">
+          <p class="room-title">Trava 1 — Identificação Rápida</p>
+          <p class="muted">Escolha a mensagem que melhor aplica o gatilho pedido. <strong>Você precisa de 2 acertos</strong> para abrir.</p>
+          <div class="lock" id="lock1">
+            <div id="r1-question" style="font-weight:700;margin-bottom:8px"></div>
+            <div class="choices" id="r1-choices"></div>
+            <div class="grid" style="margin-top:10px">
+              <div class="col-6"><button class="btn-ghost" id="r1-hint">Pedir dica (−2 pts)</button></div>
+              <div class="col-6" style="text-align:right"><button id="r1-next" disabled>Confirmar</button></div>
+            </div>
+            <div class="hint hidden" id="r1-hint-text"></div>
+            <div class="scorebar" style="margin-top:10px"><div id="r1-progress"></div></div>
+            <div class="muted" id="r1-progress-label" style="margin-top:6px;font-size:13px">Progresso: 0/2</div>
+          </div>
+        </div>
+
+        <!-- ROOM 2 -->
+        <div class="col-12 panel">
+          <p class="room-title">Trava 2 — Desbloqueio por Palavra</p>
+          <p class="muted">Digite o gatilho correto com base nos indícios. Acentos não são obrigatórios.</p>
+          <div class="lock" id="lock2">
+            <div id="r2-clue" style="font-weight:700;margin-bottom:8px"></div>
+            <input id="r2-input" type="text" placeholder="digite o gatilho…">
+            <div class="grid" style="margin-top:10px">
+              <div class="col-6"><button class="btn-ghost" id="r2-hint">Pedir dica (−2 pts)</button></div>
+              <div class="col-6" style="text-align:right"><button id="r2-check">Desbloquear</button></div>
+            </div>
+            <div class="hint hidden" id="r2-hint-text"></div>
+            <div class="tags" style="margin-top:10px"><div class="tag">💡 Exemplos válidos → escassez, autoridade, prova social, reciprocidade, afinidade, consistencia, unidade, urgencia, ancoragem</div></div>
+          </div>
+        </div>
+
+        <!-- ROOM 3 -->
+        <div class="col-12 panel">
+          <p class="room-title">Trava 3 — Sequência da Persuasão</p>
+          <p class="muted">Arraste para a ordem eficaz para um cliente <em>indeciso</em> (reduzir incerteza → criar vínculo/valor → impulsionar decisão).</p>
+          <div class="lock" id="lock3">
+            <div class="drag-area" id="pool"></div>
+            <div class="drag-area" style="margin-top:10px">
+              <div class="drop" data-slot="0">1º</div>
+              <div class="drop" data-slot="1">2º</div>
+              <div class="drop" data-slot="2">3º</div>
+            </div>
+            <div class="grid" style="margin-top:10px">
+              <div class="col-6"><button class="btn-ghost" id="r3-hint">Pista (−3 pts)</button></div>
+              <div class="col-6" style="text-align:right"><button id="r3-check">Validar sequência</button></div>
+            </div>
+            <div class="hint hidden" id="r3-hint-text"></div>
+          </div>
+        </div>
+
+        <div class="col-12" style="text-align:right">
+          <button id="finish" class="btn-ok" disabled>Escapar da sala</button>
+        </div>
+      </section>
+    </section>
+
+    <!-- LEADERBOARD / RANKING -->
+    <aside class="col-4 panel">
+      <h3 style="margin-top:0">🏆 Ranking (Top 10)</h3>
+      <div class="muted" id="rank-hint">Conectando…</div>
+      <table id="rank-table" class="hidden">
+        <thead><tr><th>#</th><th>Nome</th><th>Pontos</th><th>Tempo</th><th>Turma</th></tr></thead>
+        <tbody id="rank-body"></tbody>
+      </table>
+      <div style="margin-top:10px" class="muted">* Ranking em tempo real (Firebase). Se offline, mostra ranking local desta máquina.</div>
+    </aside>
+  </div>
+</div>
+
+<div id="win" class="modal hidden">
+  <div class="panel" style="max-width:720px;margin:auto">
+    <h2 style="margin-top:0">🚪 Você escapou!</h2>
+    <p>Tempo restante: <strong id="win-time"></strong></p>
+    <p>Pontuação final: <strong id="win-points"></strong></p>
+    <p class="muted">Seu resultado foi enviado ao ranking.</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button id="play-again" class="btn-ghost">Jogar novamente</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+const $ = s=>document.querySelector(s); const $$ = s=>Array.from(document.querySelectorAll(s));
+const norm = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'').trim();
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),1800)}
+
+let timeLeft=15*60,timerId=null,points=0,locksOpen=0; let player={name:'', turma:''};
+function updateHUD(){ $('#points').textContent=points; $('#locks-left').textContent=Math.max(0,3-locksOpen); }
+function startTimer(){ const el=$('#timer'); const tick=()=>{const m=String(Math.floor(timeLeft/60)).padStart(2,'0');const s=String(timeLeft%60).padStart(2,'0');el.textContent=`⏱ ${m}:${s}`; if(timeLeft<=0){clearInterval(timerId); gameOver();} timeLeft--;}; tick(); timerId=setInterval(tick,1000);}
+function gameOver(){ $$('button').forEach(b=>b.disabled=true); toast('⛔ Tempo esgotado!'); }
+
+// habilitar start ao preencher nome
+$('#player-name').addEventListener('input',e=>{ $('#start').disabled = e.target.value.trim().length<2; });
+
+// ===== ROOM 1 =====
+const r1Bank=[
+  {ask:'Qual mensagem aplica <b>Escassez</b>?',hint:'Limite de tempo/quantidade.',opts:['"Somente 5 vagas disponíveis até hoje às 23h"','"Temos a melhor equipe técnica do estado"','"Clientes avaliam com 5 estrelas"'],ok:0},
+  {ask:'Qual mensagem aplica <b>Prova Social</b>?',hint:'Avaliações/Números/Depoimentos.',opts:['"Garantia estendida de 3 anos"','"Mais de 2.000 alunos formados"','"Preço sobe amanhã"'],ok:1},
+  {ask:'Qual mensagem aplica <b>Autoridade</b>?',hint:'Selo/Certificação/Especialista.',opts:['"Certificado pelo IFES e SENAI"','"Últimas unidades em estoque"','"Seus amigos já usam"'],ok:0},
+  {ask:'Qual mensagem aplica <b>Reciprocidade</b>?',hint:'Dar valor antes de pedir.',opts:['"Baixe o e-book gratuito e ganhe checklist"','"Oferta válida só hoje"','"Preço original R$ 997 por R$ 497"'],ok:0}
+];
+let r1Index=0,r1Hits=0,r1Choice=-1;
+function renderR1(){ const item=r1Bank[r1Index%r1Bank.length]; $('#r1-question').innerHTML=item.ask; $('#r1-hint-text').classList.add('hidden'); const box=$('#r1-choices'); box.innerHTML=''; item.opts.forEach((txt,idx)=>{ const btn=document.createElement('button'); btn.innerHTML=txt; btn.onclick=()=>{ r1Choice=idx; $$('#r1-choices button').forEach(b=>b.classList.remove('correct','wrong')); btn.classList.add(idx===item.ok?'correct':'wrong'); $('#r1-next').disabled=false; }; box.appendChild(btn);}); $('#r1-next').disabled=true; $('#r1-progress').style.width=(r1Hits/2*100)+'%'; $('#r1-progress-label').textContent=`Progresso: ${r1Hits}/2`; }
+$('#r1-next').addEventListener('click',()=>{ const item=r1Bank[r1Index%r1Bank.length]; if(r1Choice===item.ok){ points+=3; r1Hits++; toast('✔ +3 pts'); } else { points=Math.max(0,points-1); timeLeft=Math.max(0,timeLeft-20); toast('✖ −1 pt, −20s'); } updateHUD(); r1Index++; $('#r1-progress').style.width=(r1Hits/2*100)+'%'; $('#r1-progress-label').textContent=`Progresso: ${r1Hits}/2`; if(r1Hits>=2){ $('#lock1').classList.add('success'); $$('#lock1 button').forEach(b=>b.disabled=true); locksOpen++; updateHUD(); checkFinish(); } else renderR1(); });
+$('#r1-hint').addEventListener('click',()=>{ const it=r1Bank[r1Index%r1Bank.length]; $('#r1-hint-text').textContent='💡 '+it.hint; $('#r1-hint-text').classList.remove('hidden'); points=Math.max(0,points-2); updateHUD(); });
+
+// ===== ROOM 2 =====
+const r2Bank=[
+  {clue:'Indício: “Preço original R$ 999 por R$ 599”. Qual gatilho? (1 palavra)',ans:['ancoragem']},
+  {clue:'Indício: "Seus colegas deste polo já concluíram o curso".',ans:['prova social']},
+  {clue:'Indício: "Somente 10 vagas até 23:59".',ans:['escassez','urgencia']},
+  {clue:'Indício: "Apresentei minha certificação pelo Conselho X".',ans:['autoridade']},
+  {clue:'Indício: "Baixe o guia gratuito antes de contratar".',ans:['reciprocidade']}
+];
+let r2Index=0; function renderR2(){ const it=r2Bank[r2Index%r2Bank.length]; $('#r2-clue').textContent=it.clue; $('#r2-input').value=''; $('#r2-hint-text').classList.add('hidden'); }
+$('#r2-check').addEventListener('click',()=>{ const it=r2Bank[r2Index%r2Bank.length]; const val=norm($('#r2-input').value); const ok=it.ans.some(a=>norm(a)===val); if(ok){ points+=4; toast('🔓 +4 pts'); $('#lock2').classList.add('success'); $$('#lock2 button,#lock2 input').forEach(b=>b.disabled=true); locksOpen++; updateHUD(); checkFinish(); } else { points=Math.max(0,points-1); timeLeft=Math.max(0,timeLeft-20); toast('❌ −1 pt, −20s'); r2Index++; renderR2(); updateHUD(); }});
+$('#r2-hint').addEventListener('click',()=>{ const it=r2Bank[r2Index%r2Bank.length]; const a=it.ans[0]; let tip=''; if(a==='ancoragem') tip='Pense em preço de referência vs novo preço'; if(a==='escassez'||a==='urgencia') tip='Limite de tempo/quantidade'; if(a==='autoridade') tip='Selo/certificação/especialista'; if(a==='prova social') tip='Avaliações e números'; if(a==='reciprocidade') tip='Oferecer algo antes de pedir'; $('#r2-hint-text').textContent='💡 '+tip; $('#r2-hint-text').classList.remove('hidden'); points=Math.max(0,points-2); updateHUD(); });
+
+// ===== ROOM 3 =====
+const slot1OK=new Set(['autoridade','prova social']); const slot2OK=new Set(['afinidade','reciprocidade']); const slot3OK=new Set(['urgencia']);
+const poolItems=['afinidade','consistencia','reciprocidade','autoridade','prova social','urgencia'];
+function makePill(label){ const el=document.createElement('div'); el.className='pill'; el.textContent=label; el.draggable=true; el.dataset.key=norm(label); el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',el.dataset.key); setTimeout(()=>el.style.opacity=.4,0)}); el.addEventListener('dragend',()=>el.style.opacity=1); return el; }
+function setupDrag(){ const pool=$('#pool'); pool.innerHTML=''; poolItems.forEach(p=>pool.appendChild(makePill(p))); $$('.drop').forEach(drop=>{ drop.addEventListener('dragover',e=>{e.preventDefault(); drop.classList.add('success');}); drop.addEventListener('dragleave',()=>drop.classList.remove('success')); drop.addEventListener('drop',e=>{e.preventDefault(); drop.classList.remove('success'); const key=e.dataTransfer.getData('text/plain'); drop.textContent=key; drop.dataset.key=key;}); }); }
+function validateR3(){ const seq=$$('.drop').map(d=>d.dataset.key||''); return slot1OK.has(seq[0]) && slot2OK.has(seq[1]) && slot3OK.has(seq[2]); }
+$('#r3-check').addEventListener('click',()=>{ const ok=validateR3(); if(ok){ points+=6; toast('🏆 +6 pts'); $('#lock3').classList.add('success'); locksOpen++; updateHUD(); checkFinish(); $$('#lock3 button').forEach(b=>b.disabled=true); } else { points=Math.max(0,points-2); timeLeft=Math.max(0,timeLeft-25); toast('⚠️ Sequência incorreta. Pense: reduzir incerteza → vínculo/valor → decisão.'); $$('.drop').forEach(d=>{d.classList.add('fail'); setTimeout(()=>d.classList.remove('fail'),900);}); }});
+$('#r3-hint').addEventListener('click',()=>{ $('#r3-hint-text').textContent='💡 Dica geral (sem respostas): 1) reduza incerteza; 2) crie vínculo/valor; 3) finalize com impulso de decisão.'; $('#r3-hint-text').classList.remove('hidden'); points=Math.max(0,points-3); updateHUD(); });
+
+function checkFinish(){ if(locksOpen>=3){ $('#finish').disabled=false; toast('Trancas abertas! Vá para a porta.'); } }
+
+$('#start').addEventListener('click',()=>{ player.name=$('#player-name').value.trim(); player.turma=$('#player-class').value.trim(); $('#intro').classList.add('hidden'); $('#rooms').classList.remove('hidden'); updateHUD(); startTimer(); renderR1(); renderR2(); setupDrag(); });
+$('#finish').addEventListener('click',async()=>{ if(locksOpen<3) return; clearInterval(timerId); const secondsLeft=timeLeft; $('#win-time').textContent=$('#timer').textContent.replace('⏱ ',''); $('#win-points').textContent=points; $('#win').classList.remove('hidden'); await saveScore({name:player.name, turma:player.turma||'', score:points, secondsLeft, ts:Date.now()}); });
+$('#play-again').addEventListener('click',()=>window.location.reload());
+</script>
+
+<!-- Firebase (ranking em tempo real) -->
+<script type="module">
+// 1) CRIE um projeto em https://console.firebase.google.com (modo Web)
+// 2) Habilite Firestore Database (usando regras abaixo) e Autenticação anônima (Authentication > Sign-in method > Anonymous)
+// 3) COLE AQUI sua config do Firebase (não é segredo, as regras abaixo protegem):
+const firebaseConfig = {
+  // TODO: cole sua configuração aqui
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-firestore.js";
+
+let app, db;
+function safeInit(){
+  try{ app = initializeApp(firebaseConfig); db = getFirestore(app); const auth=getAuth(app); signInAnonymously(auth).catch(()=>{}); setupLiveRanking(); $('#rank-hint').textContent='Conectado'; }catch(e){ console.warn('Firebase não configurado:', e); $('#rank-hint').textContent='Sem conexão ao ranking — usando ranking local'; }
+}
+
+safeInit();
+
+async function saveScore(payload){
+  if(!db){ // fallback local
+    const list = JSON.parse(localStorage.getItem('local_scores')||'[]');
+    list.push(payload); localStorage.setItem('local_scores', JSON.stringify(list));
+    renderLocalRanking(list);
+    return;
+  }
+  try{ await addDoc(collection(db,'scores'), { name:payload.name||'Anônimo', turma:payload.turma||'', score:payload.score||0, secondsLeft:payload.secondsLeft||0, createdAt:serverTimestamp() }); }
+  catch(e){ console.error(e); toast('⚠️ Falha ao salvar no ranking. Usando ranking local.'); const list = JSON.parse(localStorage.getItem('local_scores')||'[]'); list.push(payload); localStorage.setItem('local_scores', JSON.stringify(list)); renderLocalRanking(list); }
+}
+
+function setupLiveRanking(){
+  if(!db) return;
+  const q = query(collection(db,'scores'), orderBy('score','desc'), orderBy('secondsLeft','desc'), limit(10));
+  onSnapshot(q, (snap)=>{
+    const rows=[]; let i=1; snap.forEach(doc=>{ const d=doc.data(); rows.push(`<tr><td>${i++}</td><td>${escapeHtml(d.name||'')}</td><td>${d.score||0}</td><td>${formatSec(d.secondsLeft||0)}</td><td>${escapeHtml(d.turma||'')}</td></tr>`); });
+    fillRank(rows);
+  }, (err)=>{ console.warn(err); $('#rank-hint').textContent='Erro no ranking — mostrando local'; renderLocalRanking(JSON.parse(localStorage.getItem('local_scores')||'[]')); });
+}
+
+function fillRank(rows){ const tbody = document.getElementById('rank-body'); tbody.innerHTML = rows.join(''); document.getElementById('rank-table').classList.remove('hidden'); document.getElementById('rank-hint').classList.add('hidden'); }
+function renderLocalRanking(list){ const sorted=[...list].sort((a,b)=> b.score-a.score || b.secondsLeft-a.secondsLeft).slice(0,10); const rows=sorted.map((d,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(d.name||'')}</td><td>${d.score||0}</td><td>${formatSec(d.secondsLeft||0)}</td><td>${escapeHtml(d.turma||'')}</td></tr>`); fillRank(rows); }
+function formatSec(s){ const m=Math.floor(s/60); const ss=s%60; return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`; }
+function escapeHtml(str){ return String(str).replace(/[&<>"]/g, s=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[s])); }
+</script>
+
+<!-- Dica de regras do Firestore (cole em Regras do banco):
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /scores/{docId} {
+      allow read: if true;            // ranking público de leitura
+      allow create: if request.resource.data.score is int &&
+                     request.resource.data.secondsLeft is int &&
+                     request.resource.data.name is string &&
+                     request.resource.data.name.size() <= 40 &&
+                     request.resource.data.secondsLeft >= 0 && request.resource.data.secondsLeft <= 900 &&
+                     request.resource.data.score >= 0 && request.resource.data.score <= 100;
+      allow update, delete: if false; // ninguém altera/deleta
+    }
+  }
+}
+-->
+
+</body>
+</html>
